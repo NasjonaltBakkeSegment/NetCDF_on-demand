@@ -1,0 +1,8 @@
+netcdf4
+scipy
+numpy
+pyproj
+geopandas
+lxml
+pyyaml
+sentinelsat
