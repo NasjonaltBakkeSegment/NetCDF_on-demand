@@ -14,6 +14,7 @@ import yaml
 import uuid
 from safe_to_netcdf.s1_reader_and_NetCDF_converter import Sentinel1_reader_and_NetCDF_converter
 from safe_to_netcdf.s2_reader_and_NetCDF_converter import Sentinel2_reader_and_NetCDF_converter
+from send_email import send_email
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +155,14 @@ def main(args):
             logger.info(f"---------Downloaded and converted {product_name}-----------")
         else:
             logger.info(f"---------{product_name} does not begin with S1 or S2. Skipping-----------")
+
+    logger.info("---------Sending an email to user-----------")
+    recipients = [
+        {'name': 'Luke Marsden', 'email': 'lukem@met.no'}
+    ]
+    subject = 'NetCDF files created and ready to use'
+    message = 'Products processed successfully'
+    #send_email(recipients, subject, message)
 
     logger.info(f"------------END OF JOB-------------")
 
