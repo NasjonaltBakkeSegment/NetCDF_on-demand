@@ -12,6 +12,8 @@ import zipfile
 import os
 import yaml
 import uuid
+import shutil
+import re
 from safe_to_netcdf.s1_reader_and_NetCDF_converter import Sentinel1_reader_and_NetCDF_converter
 from safe_to_netcdf.s2_reader_and_NetCDF_converter import Sentinel2_reader_and_NetCDF_converter
 from send_email import send_email
@@ -112,9 +114,6 @@ class Product():
             conversion_object = Sentinel1_reader_and_NetCDF_converter(product=self.product_name, indir=self.tmp_products_dir, outdir=self.tmp_products_dir)
         if not conversion_object.read_ok:
             logger.error("Something went wrong in reading SAFE product. Hence exiting.")
-            """ if cfg['do']['check_locks']:
-                lockfile.rename(nokfile)
-            return False """
         conversion_OK = conversion_object.write_to_NetCDF(self.tmp_products_dir, compression_level=1)
         logger.info(f"It took {(dt.datetime.now() - start).total_seconds()} seconds to the create nc file.")
 
@@ -122,6 +121,24 @@ class Product():
             logger.info('Conversion to NetCDF OK.')
         else:
             logger.error(f"\nERROR: Something went wrong in converting {self.product_name} to NetCDF")
+
+    def move_to_lustre(self):
+
+        lustre_NetCDFs_path = Path(self.cfg['lustre_NetCDFs_path'])
+        product_type = self.product_name.split('_')[0]
+        date_match = re.search(r'(\d{4})(\d{2})(\d{2})T', self.product_name)
+        year = date_match.group(1)
+        month = date_match.group(2)
+        day = date_match.group(3)
+        other = 'EW'
+        self.relative_path = Path(product_type + '/' + year + '/' + month + '/' + day + '/' + other)
+        lustre_product_path = lustre_NetCDFs_path / self.relative_path
+
+        # Create directories if they don't exist
+        lustre_product_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(self.tmp_products_dir, lustre_product_path)
+
+
 
 def main(args):
 
@@ -152,9 +169,12 @@ def main(args):
             product.download_safe_product()
             product.unzip_safe_product()
             product.safe_to_netcdf()
+            product.move_to_lustre()
             logger.info(f"---------Downloaded and converted {product_name}-----------")
         else:
             logger.info(f"---------{product_name} does not begin with S1 or S2. Skipping-----------")
+
+
 
     logger.info("---------Sending an email to user-----------")
     recipients = [
@@ -162,6 +182,7 @@ def main(args):
     ]
     subject = 'NetCDF files created and ready to use'
     message = 'Products processed successfully'
+    #TODO: Add product information to email message including OPeNDAP links OR dump log to email message
     #send_email(recipients, subject, message)
 
     logger.info(f"------------END OF JOB-------------")
