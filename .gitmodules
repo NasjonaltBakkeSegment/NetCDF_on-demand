@@ -1,0 +1,3 @@
+[submodule "safe_to_netcdf"]
+	path = safe_to_netcdf
+	url = git@github.com:NasjonaltBakkeSegment/safe_to_netcdf.git
