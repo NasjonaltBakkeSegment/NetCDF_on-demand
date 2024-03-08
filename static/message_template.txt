@@ -1,0 +1,17 @@
+This is an automatic email.
+
+The following products should now be available via OPeNDAP:
+
+{opendap_links}
+
+They will remain available for {keep_hours} after the time they were created.
+
+There were problems processing the following products:
+
+{failures}
+
+If you have any problems, please contact the NBS helpdesk at nbs-helpdesk@met.no and include the log file attached to this email.
+
+Kind regards,
+
+The NBS team

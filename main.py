@@ -17,6 +17,7 @@ import re
 from safe_to_netcdf.s1_reader_and_NetCDF_converter import Sentinel1_reader_and_NetCDF_converter
 from safe_to_netcdf.s2_reader_and_NetCDF_converter import Sentinel2_reader_and_NetCDF_converter
 from send_email import send_email
+from utils.write_message import write_message
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,8 @@ class Product():
         self.cfg = cfg
         # Creating subdirectories to temporarily storing logs
         self.tmp_products_dir = Path(cfg['tmp_products_dir'])
-        self.temp_product_path = self.tmp_products_dir / str(self.product_name + '.nc')
+        self.tmp_product_path = self.tmp_products_dir / str(self.product_name + '.nc')
+        self.safe_tmp = self.tmp_products_dir / str(self.product_name + '.zip')
         if not os.path.exists(self.tmp_products_dir):
             os.makedirs(self.tmp_products_dir)
 
@@ -52,9 +54,16 @@ class Product():
         other = 'EW'
         self.relative_path = Path(product_type + '/' + year + '/' + month + '/' + day + '/' + other)
         self.lustre_product_path = lustre_NetCDFs_path / self.relative_path / str(self.product_name + '.nc')
-        # Create directories if they don't exist
-        logger.info(f'Creating folders to {self.lustre_product_path}')
+        logger.info(f"Creating directory if it doesn't already exist {self.lustre_product_path}")
         self.lustre_product_path.parent.mkdir(parents=True, exist_ok=True)
+        opendap_route_path = Path('https://nbstds.met.no/thredds/dodsC/NBS/')
+        self.opendap_product_path = opendap_route_path / self.relative_path / str(self.product_name + '.nc.html')
+
+    def netcdf_file_exists(self):
+        exists = os.path.exists(self.lustre_product_path)
+        if exists == True:
+            logger.info(f'NetCDF file {str(self.product_name + '.nc')} already exists on lustre')
+        return os.path.exists(self.lustre_product_path)
 
     def download_safe_product(self):
         # Connect to datahub to download data
@@ -75,9 +84,6 @@ class Product():
         logger.debug(product_info)
         uuid = product_info[0]
         logger.debug(f"uuid: {uuid}")
-
-        logger.debug('Starting to download SAFE archive')
-        self.safe_tmp = self.tmp_products_dir / str(self.product_name + '.zip')
 
         # Download SAFE
         logger.debug('Starting to download SAFE')
@@ -139,9 +145,11 @@ class Product():
     def move_to_lustre(self):
 
         logger.info(f'Moving NetCDF file to {self.lustre_product_path}')
-        shutil.move(self.temp_product_path, self.lustre_product_path)
+        shutil.move(self.tmp_product_path, self.lustre_product_path)
 
-
+    def update_time_modified(self):
+        Path(self.lustre_product_path).touch()
+        logger.info(f"Updated the time {str(self.product_name + '.nc')} was last modified to extend the time until the file will be deleted")
 
 
 def main(args):
@@ -167,28 +175,36 @@ def main(args):
     logger.addHandler(log_file)
 
     product_names = args.product_names.split(',')
+    opendap_links = [] # List of opendap links to include in email message
+    failures = [] # List of failures to include in email message
+
     for product_name in product_names:
         if product_name.startswith('S1') or product_name.startswith('S2'):
             product = Product(product_name, cfg)
-            #product.download_safe_product()
-            #product.unzip_safe_product()
-            #product.safe_to_netcdf()
-            #product.move_to_lustre()
-            #logger.info(f"---------Downloaded and converted {product_name}-----------")
+            if product.netcdf_file_exists() == True:
+                product.update_time_modified()
+                opendap_links.append(str(product.opendap_product_path))
+            else:
+                product.download_safe_product()
+                product.unzip_safe_product()
+                product.safe_to_netcdf()
+                product.move_to_lustre()
+                logger.info(f"---------Downloaded and converted {product_name}-----------")
+                if product.netcdf_file_exists() == True:
+                    opendap_links.append(str(product.opendap_product_path))
+                else:
+                    failures.append(product.product_name)
         else:
             logger.info(f"---------{product_name} does not begin with S1 or S2. Skipping-----------")
-
-
 
     logger.info("---------Sending an email to user-----------")
     recipients = [
         {'name': 'Luke Marsden', 'email': 'lukem@met.no'}
     ]
     subject = 'NetCDF files created and ready to use'
-    message = 'Products processed successfully'
-    #TODO: Add product information to email message including OPeNDAP links OR dump log to email as attachment
-    #TODO: Only download and convert if the NetCDF file does not already exist. If it does, then extend the time before it will be deleted.
-
+    message = write_message(opendap_links, failures)
+    #TODO: Add log to email as attachment
+    print(message)
     #send_email(recipients, subject, message)
 
     logger.info(f"------------END OF JOB-------------")
