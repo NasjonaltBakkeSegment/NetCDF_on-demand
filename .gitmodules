@@ -3,4 +3,4 @@
 	url = https://github.com/NasjonaltBakkeSegment/safe_to_netcdf.git
 [submodule "send_email"]
 	path = send_email
-	url = https://gitlab.met.no/met/fou/fd/nbs/send_email.git
+	url = https://github.com/NasjonaltBakkeSegment/send_email.git
