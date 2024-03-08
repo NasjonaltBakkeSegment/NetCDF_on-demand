@@ -47,14 +47,16 @@ class Product():
 
         lustre_NetCDFs_path = Path(self.cfg['lustre_NetCDFs_path'])
         product_type = self.product_name.split('_')[0]
+        if product_type.startswith('S1'):
+            beam = self.product_name.split('_')[1]
         date_match = re.search(r'(\d{4})(\d{2})(\d{2})T', self.product_name)
         year = date_match.group(1)
         month = date_match.group(2)
         day = date_match.group(3)
-        other = 'EW' #TODO: update this
-        self.relative_path = Path(product_type + '/' + year + '/' + month + '/' + day + '/' + other)
-        #TODO: check relative path is correct for all products
-        #TODO: check opendap path is correct for all products
+        if product_type.startswith('S1'):
+            self.relative_path = Path(product_type + '/' + year + '/' + month + '/' + day + '/' + beam)
+        elif product_type.startswith('S2'):
+            self.relative_path = Path(product_type + '/' + year + '/' + month + '/' + day)
         self.lustre_product_path = lustre_NetCDFs_path / self.relative_path / str(self.product_name + '.nc')
         logger.info(f"Creating directory if it doesn't already exist {self.lustre_product_path}")
         self.lustre_product_path.parent.mkdir(parents=True, exist_ok=True)
@@ -205,6 +207,7 @@ def main(args):
     subject = 'NetCDF files created and ready to use'
     message = write_message(opendap_links, failures)
     attachment_path = log_file_name
+    print(message)
 
     send_email(recipients, subject, message, attachment_path=attachment_path)
     logger.info(f"------------END OF JOB-------------")
