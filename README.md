@@ -3,7 +3,7 @@
 Python script that downloads a list of SAFE products from ColHub archive, converts them to CF-NetCDF files and makes them available via OPeNDAP. The user is sent an email that includes links to the files on OPeNDAP.
 
 ## Setup
-1. `git clone --recursive git@github.com:NasjonaltBakkeSegment/NetCDF_on-demand.git`
+1. `git clone --recursive https://github.com/NasjonaltBakkeSegment/NetCDF_on-demand.git`
 2. `conda create --name netcdf_ondemand`
 3. `conda activate netcdf_ondemand`
 4. `conda install -c conda-forge gdal`

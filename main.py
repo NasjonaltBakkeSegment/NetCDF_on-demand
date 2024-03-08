@@ -51,8 +51,10 @@ class Product():
         year = date_match.group(1)
         month = date_match.group(2)
         day = date_match.group(3)
-        other = 'EW'
+        other = 'EW' #TODO: update this
         self.relative_path = Path(product_type + '/' + year + '/' + month + '/' + day + '/' + other)
+        #TODO: check relative path is correct for all products
+        #TODO: check opendap path is correct for all products
         self.lustre_product_path = lustre_NetCDFs_path / self.relative_path / str(self.product_name + '.nc')
         logger.info(f"Creating directory if it doesn't already exist {self.lustre_product_path}")
         self.lustre_product_path.parent.mkdir(parents=True, exist_ok=True)
@@ -68,7 +70,6 @@ class Product():
     def download_safe_product(self):
         # Connect to datahub to download data
         logger.debug('Logging to datahub')
-        # TODO: keep NetCDF files and SAFE products for N hours and logs for N days - set up on crontab
         url, user, pwd = get_credentials(self.cfg)
         hub = SentinelAPI(user, pwd, url, show_progressbars=False)
 

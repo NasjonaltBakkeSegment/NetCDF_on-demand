@@ -1,6 +1,6 @@
 [submodule "safe_to_netcdf"]
 	path = safe_to_netcdf
-	url = git@github.com:NasjonaltBakkeSegment/safe_to_netcdf.git
+	url = https://github.com/NasjonaltBakkeSegment/safe_to_netcdf.git
 [submodule "send_email"]
 	path = send_email
-	url = git@gitlab.met.no:met/fou/fd/nbs/send_email.git
+	url = https://gitlab.met.no/met/fou/fd/nbs/send_email.git
