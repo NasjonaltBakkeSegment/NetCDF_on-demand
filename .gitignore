@@ -2,3 +2,4 @@ config/config.yml
 tmp_logs/*
 tmp_products/*
 test_execute_process.sh
+utils/__pycache__/*
