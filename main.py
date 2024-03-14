@@ -207,7 +207,6 @@ def main(args):
     subject = 'NetCDF files created and ready to use'
     message = write_message(opendap_links, failures)
     attachment_path = log_file_name
-    print(message)
 
     send_email(recipients, subject, message, attachment_path=attachment_path)
     logger.info(f"------------END OF JOB-------------")
