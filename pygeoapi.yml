@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  pygeoapi:
+    image: epinux/pygeoapi:dev
+    environment:
+      PYTHONUNBUFFERED: 1
+      PYGEOAPI_CONFIG: /pygeoapi-config.yml
+      # PYGEOAPI_OPENAPI: /pygeoapi-openapi.yml
+      PYGEOAPI_OPENAPI:
+      WSGI_WORKERS: 4
+    # ports:
+    #   - 7777:7777
+    hostname: pygeoapi
+    networks:
+      - net
+      - traefik-public
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        # max_attempts: 5
+        # window: 240s
+      resources:
+        #limits:
+        #  cpus: '0.50'
+        #  memory: 2048M
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+      placement:
+        constraints:
+          - node.role == manager
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=traefik-public
+        - traefik.constraint-label=traefik-public
+        - traefik.http.routers.pygeoapi-http.rule=Host(`${DOMAIN?Variable not set}`)
+        - traefik.http.routers.pygeoapi-http.entrypoints=http
+        - traefik.http.routers.pygeoapi-http.middlewares=https-redirect
+        - traefik.http.routers.pygeoapi-https.rule=Host(`${DOMAIN?Variable not set}`)
+        - traefik.http.routers.pygeoapi-https.entrypoints=https
+        - traefik.http.routers.pygeoapi-https.tls=true
+        - traefik.http.routers.pygeoapi-https.tls.certresolver=le
+        - traefik.http.services.pygeoapi.loadbalancer.server.port=80
+        # allow CORS
+        - "traefik.http.middlewares.testheader.headers.accesscontrolallowmethods=GET,OPTIONS,PUT"
+        - "traefik.http.middlewares.testheader.headers.accesscontrolalloworiginlist=*"
+        - "traefik.http.middlewares.testheader.headers.accesscontrolmaxage=100"
+        - "traefik.http.middlewares.testheader.headers.addvaryheader=true"
+    volumes:
+      - ./pygeoapi-config.yml:/pygeoapi/local.config.yml
+      - ./plugin/plugin.py:/pygeoapi/pygeoapi/plugin.py
+      - ./plugin/processes/hello_moon.py:/pygeoapi/pygeoapi/process/hello_moon.py
+    entrypoint: /entrypoint.sh
+
+
+networks:
+  net:
+    driver: overlay
+    attachable: true
+  traefik-public:
+    external: true

@@ -33,6 +33,13 @@ def get_credentials(cfg):
     password = cfg['hub']['password']
     return url, user, password
 
+def get_file_age_in_days(file_path):
+    modified_time = os.path.getmtime(file_path)
+    modified_time_datetime = dt.datetime.fromtimestamp(modified_time)
+    current_date = dt.datetime.now()
+    age_in_days = (current_date - modified_time_datetime).days
+    return age_in_days
+
 class Product():
 
     def __init__(self, product_name, cfg):
@@ -45,7 +52,7 @@ class Product():
         if not os.path.exists(self.tmp_products_dir):
             os.makedirs(self.tmp_products_dir)
 
-        lustre_NetCDFs_path = Path(self.cfg['lustre_NetCDFs_path'])
+        operational_NetCDFs_path = Path(self.cfg['operational_NetCDFs_path'])
         product_type = self.product_name.split('_')[0]
         if product_type.startswith('S1'):
             beam = self.product_name.split('_')[1]
@@ -57,17 +64,48 @@ class Product():
             self.relative_path = Path(product_type + '/' + year + '/' + month + '/' + day + '/' + beam)
         elif product_type.startswith('S2'):
             self.relative_path = Path(product_type + '/' + year + '/' + month + '/' + day)
-        self.lustre_product_path = lustre_NetCDFs_path / self.relative_path / str(self.product_name + '.nc')
-        logger.info(f"Creating directory if it doesn't already exist {self.lustre_product_path}")
-        self.lustre_product_path.parent.mkdir(parents=True, exist_ok=True)
-        opendap_route_path = Path('https://nbstds.met.no/thredds/dodsC/NBS/')
-        self.opendap_product_path = opendap_route_path / self.relative_path / str(self.product_name + '.nc.html')
+        self.operational_product_path = operational_NetCDFs_path / self.relative_path / str(self.product_name + '.nc')
+        logger.info(f"Creating directory if it doesn't already exist {self.operational_product_path}")
+        self.operational_product_path.parent.mkdir(parents=True, exist_ok=True)
 
     def netcdf_file_exists(self):
-        exists = os.path.exists(self.lustre_product_path)
-        if exists == True:
-            logger.info(f'NetCDF file {str(self.product_name + '.nc')} already exists on lustre')
-        return os.path.exists(self.lustre_product_path)
+        '''
+        Files will kept longer in the operational directory (for example 4 weeks after creation)
+        Files will be kept shorter in the netcdf_ondemand directory (for example 7 days after request)
+        If the file is in the operational directory and has less time remaining than the lifespan of the products in the netcdf_ondemand directory,
+            - copy the file across to the netcdf_ondemand directory
+        If the file exists in the netcdf_ondemand directory
+            - update the file modified date
+        '''
+        operational_file_exists = os.path.exists(self.operational_product_path)
+        if operational_file_exists == True:
+            logger.info(f'Operational NetCDF file {str(self.product_name + '.nc')} already exists')
+            age_in_days = get_file_age_in_days(self.operational_product_path)
+            if age_in_days < self.cfg['operational_products_keep_days'] - self.cfg['tmp_products_keep_days']:
+                shutil.copyfile(self.operational_product_path, self.tmp_product_path)
+                # TODO: add correct OPeNDAP path
+                opendap_route_path = Path('https://nbstds.met.no/thredds/dodsC/NetCDF_ondemand/')
+                self.opendap_product_path = opendap_route_path / str(self.product_name + '.nc.html')
+            else:
+                opendap_route_path = Path('https://nbstds.met.no/thredds/dodsC/NBS/')
+                self.opendap_product_path = opendap_route_path / self.relative_path / str(self.product_name + '.nc.html')
+            return True
+        else:
+            logger.info(f'Operational NetCDF file {str(self.product_name + '.nc')} does not exist')
+            exists_in_tmp_storage = os.path.exists(self.tmp_product_path)
+
+            # TODO: add correct OPeNDAP path
+            opendap_route_path = Path('https://nbstds.met.no/thredds/dodsC/NetCDF_ondemand/')
+            self.opendap_product_path = opendap_route_path / str(self.product_name + '.nc.html')
+
+            if exists_in_tmp_storage == True:
+                logger.info(f'NetCDF file {str(self.product_name + '.nc')} exists in NetCDF ondemand temporary storage directory')
+                self.update_time_modified()
+                return True
+            else:
+                logger.info(f'NetCDF file {str(self.product_name + '.nc')} does not exist in NetCDF ondemand temporary storage directory')
+                return False
+
 
     def download_safe_product(self):
         # Connect to datahub to download data
@@ -145,13 +183,8 @@ class Product():
         else:
             logger.error(f"\nERROR: Something went wrong in converting {self.product_name} to NetCDF")
 
-    def move_to_lustre(self):
-
-        logger.info(f'Moving NetCDF file to {self.lustre_product_path}')
-        shutil.move(self.tmp_product_path, self.lustre_product_path)
-
     def update_time_modified(self):
-        Path(self.lustre_product_path).touch()
+        Path(self.tmp_product_path).touch()
         logger.info(f"Updated the time {str(self.product_name + '.nc')} was last modified to extend the time until the file will be deleted")
 
 
@@ -184,14 +217,14 @@ def main(args):
     for product_name in product_names:
         if product_name.startswith('S1') or product_name.startswith('S2'):
             product = Product(product_name, cfg)
-            if product.netcdf_file_exists() == True:
-                product.update_time_modified()
+            exists = product.netcdf_file_exists()
+            if exists == True:
                 opendap_links.append(str(product.opendap_product_path))
             else:
                 product.download_safe_product()
                 product.unzip_safe_product()
                 product.safe_to_netcdf()
-                product.move_to_lustre()
+                # TODO: remove SAFE product
                 logger.info(f"---------Downloaded and converted {product_name}-----------")
                 if product.netcdf_file_exists() == True:
                     opendap_links.append(str(product.opendap_product_path))
@@ -205,7 +238,7 @@ def main(args):
         {'name': 'Luke Marsden', 'email': 'lukem@met.no'}
     ]
     subject = 'NetCDF files created and ready to use'
-    message = write_message(opendap_links, failures)
+    message = write_message(cfg, opendap_links, failures)
     attachment_path = log_file_name
 
     send_email(recipients, subject, message, attachment_path=attachment_path)
@@ -215,7 +248,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Script to download SAFE files from Colhub Archive and convert them to NetCDF.")
 
-    parser.add_argument("--product_names", type=str, required=True, help="Comma separated list of name of the Sentinel product to serve as NetCDF files")
+    parser.add_argument("-p", "--product_names", type=str, required=True, help="Comma separated list of name of the Sentinel product to serve as NetCDF files")
 
     args = parser.parse_args()
     main(args)

@@ -2,7 +2,7 @@
 import os
 import yaml
 
-def write_message(opendap_links, failures):
+def write_message(cfg, opendap_links, failures):
     '''
     opendap_links: a list of links to where products are on OPeNDAP.
     failures: a list of products that were not processed successfully.
@@ -14,7 +14,7 @@ def write_message(opendap_links, failures):
         opendap_links_string = '\n'.join(opendap_links)
 
     if len(failures) == 0:
-        failures_string = 'All products were processed successfully'
+        failures_string = '**All products were processed successfully**'
     else:
         failures_string = '\n'.join(failures)
 
@@ -24,16 +24,14 @@ def write_message(opendap_links, failures):
     with open(message_template_path, "r") as file:
         template = file.read()
 
-    config_path = os.path.join(script_dir, "../config/config.yml")
-
-    with open(config_path, "r") as yaml_file:
-        cfg = yaml.safe_load(yaml_file)
-        product_keep_hours = cfg['product_keep_hours']
+    operational_keep_days = cfg['operational_products_keep_days']
+    tmp_keep_days = cfg['tmp_products_keep_days']
 
     message = template.format(
         opendap_links=opendap_links_string,
         failures=failures_string,
-        keep_hours=product_keep_hours
+        tmp_keep_days=tmp_keep_days,
+        operational_keep_days=operational_keep_days
         )
 
     return message
