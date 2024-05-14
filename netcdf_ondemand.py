@@ -78,6 +78,7 @@ class Product():
             - update the file modified date
         '''
         operational_file_exists = os.path.exists(self.operational_product_path)
+        operational_file_exists = False
         if operational_file_exists == True:
             logger.info(f'Operational NetCDF file {str(self.product_name + '.nc')} already exists')
             age_in_days = get_file_age_in_days(self.operational_product_path)
@@ -187,6 +188,18 @@ class Product():
         Path(self.tmp_product_path).touch()
         logger.info(f"Updated the time {str(self.product_name + '.nc')} was last modified to extend the time until the file will be deleted")
 
+    def remove_safe(self):
+        # Get the list of files in the directory
+        files = os.listdir(self.tmp_products_dir)
+
+        # Iterate over each file in the directory
+        for file in files:
+            # Check if the file starts with "S1"
+            if file.startswith(str(self.product_name)) and not file.endswith('.nc'):
+                logger.info('Deleting ' + file)
+                file_path = os.path.join(self.tmp_products_dir, file)
+                os.remove(file_path)
+                logger.info(file + ' was successfully deleted')
 
 def main(args):
 
@@ -220,11 +233,12 @@ def main(args):
             exists = product.netcdf_file_exists()
             if exists == True:
                 opendap_links.append(str(product.opendap_product_path))
+                product.remove_safe()
             else:
                 product.download_safe_product()
                 product.unzip_safe_product()
                 product.safe_to_netcdf()
-                # TODO: remove SAFE product
+                product.remove_safe()
                 logger.info(f"---------Downloaded and converted {product_name}-----------")
                 if product.netcdf_file_exists() == True:
                     opendap_links.append(str(product.opendap_product_path))
