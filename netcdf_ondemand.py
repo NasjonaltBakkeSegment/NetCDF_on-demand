@@ -22,7 +22,8 @@ from utils.write_message import write_message
 logger = logging.getLogger(__name__)
 
 def get_config():
-    file_path = "config/config.yml"
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(script_dir, "config", "config.yml")
     with open(file_path, "r") as yaml_file:
         cfg = yaml.safe_load(yaml_file)
         return cfg
@@ -78,9 +79,9 @@ class Product():
             - update the file modified date
         '''
         operational_file_exists = os.path.exists(self.operational_product_path)
-        operational_file_exists = False
+        #operational_file_exists = False
         if operational_file_exists == True:
-            logger.info(f'Operational NetCDF file {str(self.product_name + '.nc')} already exists')
+            logger.info(f'Operational NetCDF file {str(self.product_name) + ".nc"} already exists')
             age_in_days = get_file_age_in_days(self.operational_product_path)
             if age_in_days < self.cfg['operational_products_keep_days'] - self.cfg['tmp_products_keep_days']:
                 shutil.copyfile(self.operational_product_path, self.tmp_product_path)
@@ -92,7 +93,7 @@ class Product():
                 self.opendap_product_path = opendap_route_path / self.relative_path / str(self.product_name + '.nc.html')
             return True
         else:
-            logger.info(f'Operational NetCDF file {str(self.product_name + '.nc')} does not exist')
+            logger.info(f'Operational NetCDF file {str(self.product_name) + ".nc"} does not exist')
             exists_in_tmp_storage = os.path.exists(self.tmp_product_path)
 
             # TODO: add correct OPeNDAP path
@@ -100,11 +101,11 @@ class Product():
             self.opendap_product_path = opendap_route_path / str(self.product_name + '.nc.html')
 
             if exists_in_tmp_storage == True:
-                logger.info(f'NetCDF file {str(self.product_name + '.nc')} exists in NetCDF ondemand temporary storage directory')
+                logger.info(f'NetCDF file {str(self.product_name) + ".nc"} exists in NetCDF ondemand temporary storage directory')
                 self.update_time_modified()
                 return True
             else:
-                logger.info(f'NetCDF file {str(self.product_name + '.nc')} does not exist in NetCDF ondemand temporary storage directory')
+                logger.info(f'NetCDF file {str(self.product_name) + ".nc"} does not exist in NetCDF ondemand temporary storage directory')
                 return False
 
 
@@ -190,16 +191,26 @@ class Product():
 
     def remove_safe(self):
         # Get the list of files in the directory
-        files = os.listdir(self.tmp_products_dir)
+        files_and_dirs = os.listdir(self.tmp_products_dir)
 
         # Iterate over each file in the directory
-        for file in files:
-            # Check if the file starts with "S1"
-            if file.startswith(str(self.product_name)) and not file.endswith('.nc'):
-                logger.info('Deleting ' + file)
-                file_path = os.path.join(self.tmp_products_dir, file)
-                os.remove(file_path)
-                logger.info(file + ' was successfully deleted')
+        for entry in files_and_dirs:
+
+            entry_path = os.path.join(self.tmp_products_dir, entry)
+
+            # Check if the entry starts with the product name
+            if entry.startswith(str(self.product_name)) and not entry.endswith('.nc'):
+                logger.info('Deleting ' + entry)
+
+                # Check if the entry is a directory
+                if os.path.isdir(entry_path):
+                    shutil.rmtree(entry_path)
+                    logger.info(entry + ' was successfully deleted')
+                # Check if the entry is a file
+                elif os.path.isfile(entry_path):
+                    os.remove(entry_path)
+                    logger.info(entry + ' file was successfully deleted')
+
 
 def main(args):
 
