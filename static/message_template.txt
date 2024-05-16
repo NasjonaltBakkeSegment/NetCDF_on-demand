@@ -1,5 +1,3 @@
-Hi there,
-
 This is an automatic email.
 
 The following products should now be available via OPeNDAP:

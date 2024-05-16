@@ -16,7 +16,7 @@ import shutil
 import re
 from safe_to_netcdf.s1_reader_and_NetCDF_converter import Sentinel1_reader_and_NetCDF_converter
 from safe_to_netcdf.s2_reader_and_NetCDF_converter import Sentinel2_reader_and_NetCDF_converter
-from send_email import send_email
+from send_email.mailer import email_sender
 from utils.write_message import write_message
 
 logger = logging.getLogger(__name__)
@@ -66,7 +66,7 @@ class Product():
         elif product_type.startswith('S2'):
             self.relative_path = Path(product_type + '/' + year + '/' + month + '/' + day)
         self.operational_product_path = operational_NetCDFs_path / self.relative_path / str(self.product_name + '.nc')
-        logger.info(f"Creating directory if it doesn't already exist {self.operational_product_path}")
+        logger.info(f"Creating directory if it doesn't already exist {self.relative_path}")
         self.operational_product_path.parent.mkdir(parents=True, exist_ok=True)
 
     def netcdf_file_exists(self):
@@ -266,7 +266,7 @@ def main(args):
     message = write_message(cfg, opendap_links, failures)
     attachment_path = log_file_name
 
-    send_email(recipients, subject, message, attachment_path=attachment_path)
+    email_sender(recipients, subject, message, attachment_path=attachment_path)
     logger.info(f"------------END OF JOB-------------")
 
 
