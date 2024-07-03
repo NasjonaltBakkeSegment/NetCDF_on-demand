@@ -14,6 +14,7 @@ import yaml
 import uuid
 import shutil
 import re
+from urllib.parse import urljoin
 from safe_to_netcdf.s1_reader_and_NetCDF_converter import Sentinel1_reader_and_NetCDF_converter
 from safe_to_netcdf.s2_reader_and_NetCDF_converter import Sentinel2_reader_and_NetCDF_converter
 from send_email.mailer import email_sender
@@ -80,27 +81,27 @@ class Product():
         '''
         operational_file_exists = os.path.exists(self.operational_product_path)
         #operational_file_exists = False
-        if operational_file_exists == True:
+        if operational_file_exists:
             logger.info(f'Operational NetCDF file {str(self.product_name) + ".nc"} already exists')
             age_in_days = get_file_age_in_days(self.operational_product_path)
             if age_in_days < self.cfg['operational_products_keep_days'] - self.cfg['tmp_products_keep_days']:
                 shutil.copyfile(self.operational_product_path, self.tmp_product_path)
-                # TODO: add correct OPeNDAP path
-                opendap_route_path = Path('https://nbstds.met.no/thredds/dodsC/NetCDF_ondemand/')
-                self.opendap_product_path = opendap_route_path / str(self.product_name + '.nc.html')
+                # Construct URL with double forward slashes using urljoin
+                opendap_route_path = 'https://nbstds.met.no/thredds/dodsC/NetCDF_ondemand/'
+                self.opendap_product_path = urljoin(opendap_route_path, str(self.product_name + '.nc.html'))
             else:
-                opendap_route_path = Path('https://nbstds.met.no/thredds/dodsC/NBS/')
-                self.opendap_product_path = opendap_route_path / self.relative_path / str(self.product_name + '.nc.html')
+                opendap_route_path = 'https://nbstds.met.no/thredds/dodsC/NBS/'
+                self.opendap_product_path = urljoin(opendap_route_path, self.relative_path / str(self.product_name + '.nc.html'))
             return True
         else:
             logger.info(f'Operational NetCDF file {str(self.product_name) + ".nc"} does not exist')
             exists_in_tmp_storage = os.path.exists(self.tmp_product_path)
 
-            # TODO: add correct OPeNDAP path
-            opendap_route_path = Path('https://nbstds.met.no/thredds/dodsC/NetCDF_ondemand/')
-            self.opendap_product_path = opendap_route_path / str(self.product_name + '.nc.html')
+            # Construct URL with double forward slashes using urljoin
+            opendap_route_path = 'https://nbstds.met.no/thredds/dodsC/NetCDF_ondemand/'
+            self.opendap_product_path = urljoin(opendap_route_path, str(self.product_name + '.nc.html'))
 
-            if exists_in_tmp_storage == True:
+            if exists_in_tmp_storage:
                 logger.info(f'NetCDF file {str(self.product_name) + ".nc"} exists in NetCDF ondemand temporary storage directory')
                 self.update_time_modified()
                 return True
@@ -259,13 +260,12 @@ def main(args):
             logger.info(f"---------{product_name} does not begin with S1 or S2. Skipping-----------")
 
     logger.info("---------Sending an email to user-----------")
-    recipients = [
-        {'name': 'Luke Marsden', 'email': 'lukem@met.no'}
-    ]
+    recipients = ["lukem@met.no", "lhmarsden@hotmail.com"]
     subject = 'NetCDF files created and ready to use'
     message = write_message(cfg, opendap_links, failures)
     attachment_path = log_file_name
 
+    #send_email('test subject', 'hello world', 'lukem@met.no', ["lukem@met.no", "lhmarsden@hotmail.com"], "myapppassword")
     email_sender(recipients, subject, message, attachment_path=attachment_path)
     logger.info(f"------------END OF JOB-------------")
 
