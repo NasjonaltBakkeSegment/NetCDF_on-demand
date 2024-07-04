@@ -14,6 +14,7 @@ import yaml
 import uuid
 import shutil
 import re
+import json
 from urllib.parse import urljoin
 from safe_to_netcdf.s1_reader_and_NetCDF_converter import Sentinel1_reader_and_NetCDF_converter
 from safe_to_netcdf.s2_reader_and_NetCDF_converter import Sentinel2_reader_and_NetCDF_converter
@@ -214,12 +215,10 @@ class Product():
 
 
 def main(args):
-
     cfg = get_config()
-
     tmp_logs_dir = Path(cfg['tmp_logs_dir'])
 
-    # Creating subdirectories to temporarily storing logs
+    # Creating subdirectories to temporarily store logs
     if not os.path.exists(tmp_logs_dir):
         os.makedirs(tmp_logs_dir)
 
@@ -235,15 +234,29 @@ def main(args):
     log_file.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(log_file)
 
-    product_names = args.product_names.split(',')
-    opendap_links = [] # List of opendap links to include in email message
-    failures = [] # List of failures to include in email message
+    # Parse JSON data
+    json_data = json.loads(args.json_data)
+    email = json_data["email"]
+    product_names = json_data["fileList"]
+
+    # Create recipients list
+    if isinstance(email, str):
+        recipients = [email]
+    elif isinstance(email, list):
+        recipients = email
+    else:
+        logger.error("Invalid email format")
+        sys.exit(1)
+
+    # Create product_names list from fileList
+    opendap_links = []  # List of opendap links to include in email message
+    failures = []  # List of failures to include in email message
 
     for product_name in product_names:
         if product_name.startswith('S1') or product_name.startswith('S2'):
             product = Product(product_name, cfg)
             exists = product.netcdf_file_exists()
-            if exists == True:
+            if exists:
                 opendap_links.append(str(product.opendap_product_path))
                 product.remove_safe()
             else:
@@ -252,7 +265,7 @@ def main(args):
                 product.safe_to_netcdf()
                 product.remove_safe()
                 logger.info(f"---------Downloaded and converted {product_name}-----------")
-                if product.netcdf_file_exists() == True:
+                if product.netcdf_file_exists():
                     opendap_links.append(str(product.opendap_product_path))
                 else:
                     failures.append(product.product_name)
@@ -260,20 +273,17 @@ def main(args):
             logger.info(f"---------{product_name} does not begin with S1 or S2. Skipping-----------")
 
     logger.info("---------Sending an email to user-----------")
-    recipients = ["lukem@met.no", "lhmarsden@hotmail.com"]
     subject = 'NetCDF files created and ready to use'
     message = write_message(cfg, opendap_links, failures)
     attachment_path = log_file_name
 
-    #send_email('test subject', 'hello world', 'lukem@met.no', ["lukem@met.no", "lhmarsden@hotmail.com"], "myapppassword")
     email_sender(recipients, subject, message, attachment_path=attachment_path)
     logger.info(f"------------END OF JOB-------------")
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Script to download SAFE files from Colhub Archive and convert them to NetCDF.")
 
-    parser.add_argument("-p", "--product_names", type=str, required=True, help="Comma separated list of name of the Sentinel product to serve as NetCDF files")
+    parser.add_argument("json_data", type=str, help="JSON string containing email and fileList")
 
     args = parser.parse_args()
     main(args)
