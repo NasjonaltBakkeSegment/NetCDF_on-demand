@@ -92,7 +92,7 @@ class Product():
                 self.opendap_product_path = urljoin(opendap_route_path, str(self.product_name + '.nc.html'))
             else:
                 opendap_route_path = 'https://nbstds.met.no/thredds/dodsC/NBS/'
-                self.opendap_product_path = urljoin(opendap_route_path, self.relative_path / str(self.product_name + '.nc.html'))
+                self.opendap_product_path = urljoin(opendap_route_path, str(self.relative_path / str(self.product_name + '.nc.html')))
             return True
         else:
             logger.info(f'Operational NetCDF file {str(self.product_name) + ".nc"} does not exist')
@@ -280,7 +280,8 @@ if __name__ == "__main__":
 
     # Add arguments for email and products
     parser.add_argument("email", type=str, help="Email address where notifications or results will be sent.")
-    parser.add_argument("products", type=str, nargs='+', help="List of product names to serve NetCDF files for.")
+    parser.add_argument("products", type=str, help="Comma-separated list of product names to serve NetCDF files for.")
 
     args = parser.parse_args()
-    main(args.email, args.products)
+    product_list = args.products.split(",")
+    main(args.email, product_list)
