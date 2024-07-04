@@ -214,7 +214,7 @@ class Product():
                     logger.info(entry + ' file was successfully deleted')
 
 
-def main(args):
+def main(email, product_names):
     cfg = get_config()
     tmp_logs_dir = Path(cfg['tmp_logs_dir'])
 
@@ -233,11 +233,6 @@ def main(args):
     log_file = logging.FileHandler(log_file_name)
     log_file.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(log_file)
-
-    # Parse JSON data
-    json_data = json.loads(args.json_data)
-    email = json_data["email"]
-    product_names = json_data["fileList"]
 
     # Create recipients list
     if isinstance(email, str):
@@ -283,7 +278,9 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Script to download SAFE files from Colhub Archive and convert them to NetCDF.")
 
-    parser.add_argument("json_data", type=str, help="JSON string containing email and fileList")
+    # Add arguments for email and products
+    parser.add_argument("email", type=str, help="Email address where notifications or results will be sent.")
+    parser.add_argument("products", type=str, nargs='+', help="List of product names to serve NetCDF files for.")
 
     args = parser.parse_args()
-    main(args)
+    main(args.email, args.products)
