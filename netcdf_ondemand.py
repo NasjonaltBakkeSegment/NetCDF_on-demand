@@ -279,8 +279,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Script to download SAFE files from Colhub Archive and convert them to NetCDF.")
 
     # Add arguments for email and products
-    parser.add_argument("email", type=str, help="Email address where notifications or results will be sent.")
-    parser.add_argument("products", type=str, help="Comma-separated list of product names to serve NetCDF files for.")
+    parser.add_argument("--email", type=str, required=True, help="Email address where notifications or results will be sent.")
+    parser.add_argument("--products", type=str, required=True, help="Comma-separated list of product names to serve NetCDF files for.")
 
     args = parser.parse_args()
     product_list = args.products.split(",")
