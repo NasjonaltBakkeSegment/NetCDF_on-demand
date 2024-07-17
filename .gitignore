@@ -1,5 +1,8 @@
 config/config.yml
 tmp_logs/*
 tmp_products/*
+tmp/*
 test_execute_process.sh
 utils/__pycache__/*
+operational_files/*
+*__pycache__*
