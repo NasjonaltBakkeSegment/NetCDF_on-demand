@@ -24,113 +24,174 @@ from utils.write_message import write_message
 logger = logging.getLogger(__name__)
 
 def get_config():
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    file_path = os.path.join(script_dir, "config", "config.yml")
-    with open(file_path, "r") as yaml_file:
-        cfg = yaml.safe_load(yaml_file)
-        return cfg
+    """
+    Loads the configuration from a YAML file.
 
-def get_credentials(cfg):
-    url = cfg['hub']['url']
-    user = cfg['hub']['user']
-    password = cfg['hub']['password']
-    return url, user, password
+    Returns:
+        dict: Configuration dictionary loaded from config.yml.
+    """
+    script_directory = os.path.dirname(os.path.abspath(__file__))
+    config_file_path = os.path.join(script_directory, "config", "config.yml")
+
+    if not os.path.exists(config_file_path):
+        logger.error(f"Configuration file not found: {config_file_path}")
+        sys.exit(1)
+
+    with open(config_file_path, "r") as config_file:
+        config = yaml.safe_load(config_file)
+
+    return config
+
+def get_credentials(config):
+    """
+    Extracts the credentials from the configuration dictionary.
+
+    Args:
+        config (dict): Configuration dictionary.
+
+    Returns:
+        tuple: A tuple containing the URL, username, and password.
+    """
+    hub_config = config['hub']
+    url = hub_config['url']
+    username = hub_config['user']
+    password = hub_config['password']
+
+    return url, username, password
 
 def get_file_age_in_days(file_path):
-    modified_time = os.path.getmtime(file_path)
-    modified_time_datetime = dt.datetime.fromtimestamp(modified_time)
-    current_date = dt.datetime.now()
-    age_in_days = (current_date - modified_time_datetime).days
+    """
+    Calculates the age of a file in days based on its last modification time.
+
+    Args:
+        file_path (str): Path to the file.
+
+    Returns:
+        int: Age of the file in days.
+    """
+    last_modified_time = os.path.getmtime(file_path)
+    last_modified_datetime = dt.datetime.fromtimestamp(last_modified_time)
+    current_datetime = dt.datetime.now()
+
+    age_in_days = (current_datetime - last_modified_datetime).days
+
     return age_in_days
 
-class Product():
+class Product:
+    def __init__(self, product_name, config):
+        """
+        Initializes a Product instance.
 
-    def __init__(self, product_name, cfg):
+        Args:
+            product_name (str): Name of the product.
+            config (dict): Configuration dictionary.
+        """
         self.product_name = product_name
-        self.cfg = cfg
-        # Creating subdirectories to temporarily storing logs
-        self.tmp_products_dir = Path(cfg['tmp_products_dir'])
-        self.tmp_product_path = self.tmp_products_dir / str(self.product_name + '.nc')
-        self.safe_tmp = self.tmp_products_dir / str(self.product_name + '.zip')
-        if not os.path.exists(self.tmp_products_dir):
-            os.makedirs(self.tmp_products_dir)
+        self.config = config
 
-        operational_NetCDFs_path = Path(self.cfg['operational_NetCDFs_path'])
+        # Set up temporary directories for storing logs
+        self._setup_temp_directories()
+
+        # Determine the relative path and operational product path
+        self._setup_operational_paths()
+
+    def _setup_temp_directories(self):
+        """
+        Sets up temporary directories for storing logs.
+        """
+        self.tmp_products_dir = Path(self.config['tmp_products_dir'])
+        self.tmp_product_path = self.tmp_products_dir / f"{self.product_name}.nc"
+        self.safe_tmp = self.tmp_products_dir / f"{self.product_name}.zip"
+
+        if not self.tmp_products_dir.exists():
+            self.tmp_products_dir.mkdir(parents=True, exist_ok=True)
+
+    def _setup_operational_paths(self):
+        """
+        Sets up the relative and operational paths for the product.
+        """
+        operational_NetCDFs_path = Path(self.config['operational_NetCDFs_path'])
         product_type = self.product_name.split('_')[0]
+
+        date_match = re.search(r'(\d{4})(\d{2})(\d{2})T', self.product_name)
+        if not date_match:
+            raise ValueError(f"Invalid product name format: {self.product_name}")
+
+        year, month, day = date_match.groups()
+
         if product_type.startswith('S1'):
             beam = self.product_name.split('_')[1]
-        date_match = re.search(r'(\d{4})(\d{2})(\d{2})T', self.product_name)
-        year = date_match.group(1)
-        month = date_match.group(2)
-        day = date_match.group(3)
-        if product_type.startswith('S1'):
-            self.relative_path = Path(product_type + '/' + year + '/' + month + '/' + day + '/' + beam)
+            self.relative_path = Path(f"{product_type}/{year}/{month}/{day}/{beam}")
         elif product_type.startswith('S2'):
-            self.relative_path = Path(product_type + '/' + year + '/' + month + '/' + day)
-        self.operational_product_path = operational_NetCDFs_path / self.relative_path / str(self.product_name + '.nc')
-        logger.info(f"Creating directory if it doesn't already exist {self.relative_path}")
+            self.relative_path = Path(f"{product_type}/{year}/{month}/{day}")
+        else:
+            raise ValueError(f"Unsupported product type: {product_type}")
+
+        self.operational_product_path = operational_NetCDFs_path / self.relative_path / f"{self.product_name}.nc"
+
+        logger.info(f"Creating directory if it doesn't already exist: {self.relative_path}")
         self.operational_product_path.parent.mkdir(parents=True, exist_ok=True)
 
     def netcdf_file_exists(self):
-        '''
-        Files will kept longer in the operational directory (for example 4 weeks after creation)
-        Files will be kept shorter in the netcdf_ondemand directory (for example 7 days after request)
-        If the file is in the operational directory and has less time remaining than the lifespan of the products in the netcdf_ondemand directory,
-            - copy the file across to the netcdf_ondemand directory
-        If the file exists in the netcdf_ondemand directory
-            - update the file modified date
-        '''
-        operational_file_exists = os.path.exists(self.operational_product_path)
-        #operational_file_exists = False
-        if operational_file_exists:
-            logger.info(f'Operational NetCDF file {str(self.product_name) + ".nc"} already exists')
+        """
+        Checks if the NetCDF file exists in either the operational directory or temporary storage.
+
+        Returns:
+            bool: True if the file exists, False otherwise.
+        """
+        if self.operational_product_path.exists():
+            logger.info(f'Operational NetCDF file {self.product_name}.nc already exists')
             age_in_days = get_file_age_in_days(self.operational_product_path)
-            if age_in_days < self.cfg['operational_products_keep_days'] - self.cfg['tmp_products_keep_days']:
+            if age_in_days < self.config['operational_products_keep_days'] - self.config['tmp_products_keep_days']:
                 shutil.copyfile(self.operational_product_path, self.tmp_product_path)
-                # Construct URL with double forward slashes using urljoin
-                opendap_route_path = 'https://nbstds.met.no/thredds/dodsC/NetCDF_ondemand/'
-                self.opendap_product_path = urljoin(opendap_route_path, str(self.product_name + '.nc.html'))
+                self.opendap_product_path = self._construct_opendap_path('NetCDF_ondemand')
             else:
-                opendap_route_path = 'https://nbstds.met.no/thredds/dodsC/NBS/'
-                self.opendap_product_path = urljoin(opendap_route_path, str(self.relative_path / str(self.product_name + '.nc.html')))
+                self.opendap_product_path = self._construct_opendap_path('NBS')
             return True
         else:
-            logger.info(f'Operational NetCDF file {str(self.product_name) + ".nc"} does not exist')
-            exists_in_tmp_storage = os.path.exists(self.tmp_product_path)
-
-            # Construct URL with double forward slashes using urljoin
-            opendap_route_path = 'https://nbstds.met.no/thredds/dodsC/NetCDF_ondemand/'
-            self.opendap_product_path = urljoin(opendap_route_path, str(self.product_name + '.nc.html'))
-
-            if exists_in_tmp_storage:
-                logger.info(f'NetCDF file {str(self.product_name) + ".nc"} exists in NetCDF ondemand temporary storage directory')
+            logger.info(f'Operational NetCDF file {self.product_name}.nc does not exist')
+            if self.tmp_product_path.exists():
+                logger.info(f'NetCDF file {self.product_name}.nc exists in NetCDF ondemand temporary storage directory')
                 self.update_time_modified()
                 return True
             else:
-                logger.info(f'NetCDF file {str(self.product_name) + ".nc"} does not exist in NetCDF ondemand temporary storage directory')
+                logger.info(f'NetCDF file {self.product_name}.nc does not exist in NetCDF ondemand temporary storage directory')
+                self.opendap_product_path = self._construct_opendap_path('NetCDF_ondemand')
                 return False
 
+    def _construct_opendap_path(self, base_path):
+        """
+        Constructs the OPeNDAP path for the product.
+
+        Args:
+            base_path (str): Base path for the OPeNDAP URL.
+
+        Returns:
+            str: Complete OPeNDAP URL.
+        """
+        opendap_route_path = f'https://nbstds.met.no/thredds/dodsC/{base_path}/'
+        return urljoin(opendap_route_path, f"{self.product_name}.nc.html")
 
     def download_safe_product(self):
-        # Connect to datahub to download data
+        """
+        Downloads the SAFE product from the datahub.
+        """
         logger.debug('Logging to datahub')
-        url, user, pwd = get_credentials(self.cfg)
+        url, user, pwd = get_credentials(self.config)
         hub = SentinelAPI(user, pwd, url, show_progressbars=False)
 
-        # Qcheck_locksuery datahub to get uuid from filename (ie product name)
         logger.debug('Querying datahub to get uuid from product name.')
-        product_info = list(hub.query(filename=self.product_name + '*'))
+        product_info = list(hub.query(filename=f"{self.product_name}*"))
         if len(product_info) > 1:
             logger.error(f'Found more than one dataset with filename {self.product_name}. Exiting.')
-
+            return
         elif len(product_info) == 0:
             logger.error(f"Product not found on {url}")
+            return
 
-        logger.debug(product_info)
-        uuid = product_info[0]
+        uuid = product_info[0]['uuid']
         logger.debug(f"uuid: {uuid}")
 
-        # Download SAFE
         logger.debug('Starting to download SAFE')
         if not self.safe_tmp.is_file():
             try:
@@ -138,80 +199,91 @@ class Product():
             except (sentinelsat.sentinel.SentinelAPIError, sentinelsat.sentinel.InvalidChecksumError) as e:
                 logger.error(f"Could not download product {self.product_name} from colhub.met.no. Hence terminating.")
                 logger.error(e)
-                return False
-            # sentinelAPI sometimes throws 'non-sentinelAPI' exceptions
-            # See Issue #18
+                return
             except BaseException as e:
                 logger.error(f"Could not download product {self.product_name} from colhub.met.no. Hence terminating.")
                 logger.error('Un-expected exception. See traceback below:')
                 logger.error(e)
+                return
             logger.debug('Done downloading SAFE')
 
     def unzip_safe_product(self):
+        """
+        Unzips the SAFE product.
+        """
         if not self.safe_tmp.is_file():
-            self.safe_tmp = self.tmp_products_dir / str(self.product_name + '.SAFE.zip')
-            if self.safe_tmp.is_file():
-                logger.info('Usual zip archive not found. But instead found one with SAFE extension in addition (.SAFE.zip instead of .zip).')
-            else:
+            self.safe_tmp = self.tmp_products_dir / f"{self.product_name}.SAFE.zip"
+            if not self.safe_tmp.is_file():
                 logger.error('Archive not found. Hence exiting')
-                #return False
+                return
 
         logger.debug('Starting unzipping SAFE')
         try:
             with zipfile.ZipFile(self.safe_tmp, 'r') as zip_ref:
                 zip_ref.extractall(self.tmp_products_dir)
-        except zipfile.BadZipfile as e:
+        except zipfile.BadZipFile as e:
             logger.error("Could not unzip SAFE archive. Hence terminating.")
             logger.error(e)
-            #return False
-
+            return
         logger.debug('Done unzipping SAFE')
         logger.info('Download and unzip of SAFE archive OK.')
 
     def safe_to_netcdf(self):
-        # Create NC from SAFE
+        """
+        Converts the SAFE product to NetCDF format.
+        """
         logger.debug('Starting to create NC file')
         start = dt.datetime.now()
 
         if self.product_name.startswith('S2'):
-            conversion_object = Sentinel2_reader_and_NetCDF_converter(product=self.product_name, indir=self.tmp_products_dir, outdir=self.tmp_products_dir)
+            conversion_object = Sentinel2_reader_and_NetCDF_converter(
+                product=self.product_name,
+                indir=self.tmp_products_dir,
+                outdir=self.tmp_products_dir
+            )
         else:
-            conversion_object = Sentinel1_reader_and_NetCDF_converter(product=self.product_name, indir=self.tmp_products_dir, outdir=self.tmp_products_dir)
+            conversion_object = Sentinel1_reader_and_NetCDF_converter(
+                product=self.product_name,
+                indir=self.tmp_products_dir,
+                outdir=self.tmp_products_dir
+            )
+
         if not conversion_object.read_ok:
             logger.error("Something went wrong in reading SAFE product. Hence exiting.")
+            return
+
         conversion_OK = conversion_object.write_to_NetCDF(self.tmp_products_dir, compression_level=1)
-        logger.info(f"It took {(dt.datetime.now() - start).total_seconds()} seconds to the create nc file.")
+        logger.info(f"It took {(dt.datetime.now() - start).total_seconds()} seconds to create the NC file.")
 
         if conversion_OK:
             logger.info('Conversion to NetCDF OK.')
         else:
-            logger.error(f"\nERROR: Something went wrong in converting {self.product_name} to NetCDF")
+            logger.error(f"ERROR: Something went wrong in converting {self.product_name} to NetCDF")
 
     def update_time_modified(self):
-        Path(self.tmp_product_path).touch()
-        logger.info(f"Updated the time {str(self.product_name + '.nc')} was last modified to extend the time until the file will be deleted")
+        """
+        Updates the modification time of the temporary NetCDF file.
+        """
+        self.tmp_product_path.touch()
+        logger.info(f"Updated the time {self.product_name}.nc was last modified to extend the time until the file will be deleted")
 
     def remove_safe(self):
-        # Get the list of files in the directory
+        """
+        Removes the SAFE files associated with the product from the temporary directory.
+        """
         files_and_dirs = os.listdir(self.tmp_products_dir)
 
-        # Iterate over each file in the directory
         for entry in files_and_dirs:
-
             entry_path = os.path.join(self.tmp_products_dir, entry)
 
-            # Check if the entry starts with the product name
-            if entry.startswith(str(self.product_name)) and not entry.endswith('.nc'):
-                logger.info('Deleting ' + entry)
-
-                # Check if the entry is a directory
+            if entry.startswith(self.product_name) and not entry.endswith('.nc'):
+                logger.info(f'Deleting {entry}')
                 if os.path.isdir(entry_path):
                     shutil.rmtree(entry_path)
-                    logger.info(entry + ' was successfully deleted')
-                # Check if the entry is a file
+                    logger.info(f'{entry} was successfully deleted')
                 elif os.path.isfile(entry_path):
                     os.remove(entry_path)
-                    logger.info(entry + ' file was successfully deleted')
+                    logger.info(f'{entry} file was successfully deleted')
 
 
 def main(email, product_names):
@@ -222,17 +294,18 @@ def main(email, product_names):
     if not os.path.exists(tmp_logs_dir):
         os.makedirs(tmp_logs_dir)
 
-    # Log to console
+    # Set up logging to console and file
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
-    log_info = logging.StreamHandler(sys.stdout)
-    log_info.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-    logger.addHandler(log_info)
+
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger.addHandler(console_handler)
 
     log_file_name = tmp_logs_dir / f"logfile_{uuid.uuid4()}.log"
-    log_file = logging.FileHandler(log_file_name)
-    log_file.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-    logger.addHandler(log_file)
+    file_handler = logging.FileHandler(log_file_name)
+    file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger.addHandler(file_handler)
 
     # Create recipients list
     if isinstance(email, str):
@@ -250,8 +323,7 @@ def main(email, product_names):
     for product_name in product_names:
         if product_name.startswith('S1') or product_name.startswith('S2'):
             product = Product(product_name, cfg)
-            exists = product.netcdf_file_exists()
-            if exists:
+            if product.netcdf_file_exists():
                 opendap_links.append(str(product.opendap_product_path))
                 product.remove_safe()
             else:
@@ -259,29 +331,40 @@ def main(email, product_names):
                 product.unzip_safe_product()
                 product.safe_to_netcdf()
                 product.remove_safe()
-                logger.info(f"---------Downloaded and converted {product_name}-----------")
+                logger.info(f"Downloaded and converted {product_name}")
                 if product.netcdf_file_exists():
                     opendap_links.append(str(product.opendap_product_path))
                 else:
                     failures.append(product.product_name)
         else:
-            logger.info(f"---------{product_name} does not begin with S1 or S2. Skipping-----------")
+            logger.info(f"{product_name} does not begin with S1 or S2. Skipping")
 
-    logger.info("---------Sending an email to user-----------")
-    subject = 'NetCDF files created and ready to use'
+
+    logger.info("Sending an email to user")
+    subject = 'Requested NetCDF files'
     message = write_message(cfg, opendap_links, failures)
-    attachment_path = log_file_name
+    email_sender(recipients, subject, message, attachment_path=log_file_name)
 
-    email_sender(recipients, subject, message, attachment_path=attachment_path)
-    logger.info(f"------------END OF JOB-------------")
+    logger.info("End of job")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Script to download SAFE files from Colhub Archive and convert them to NetCDF.")
+    parser = argparse.ArgumentParser(
+        description="Script to download SAFE files from Colhub Archive and convert them to NetCDF."
+    )
 
-    # Add arguments for email and products
-    parser.add_argument("--email", type=str, required=True, help="Email address where notifications or results will be sent.")
-    parser.add_argument("--products", type=str, required=True, help="Comma-separated list of product names to serve NetCDF files for.")
+    parser.add_argument(
+        "--email", type=str, required=True,
+        help="Email address where notifications or results will be sent."
+    )
+    parser.add_argument(
+        "--products", type=str, required=True,
+        help="Comma-separated list of product names to serve NetCDF files for."
+    )
 
-    args = parser.parse_args()
-    product_list = args.products.split(",")
-    main(args.email, product_list)
+    try:
+        args = parser.parse_args()
+        product_list = args.products.split(",")
+        main(args.email, product_list)
+    except argparse.ArgumentError as e:
+        logger.error(f"Argument parsing error: {e}")
+        sys.exit(1)
