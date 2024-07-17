@@ -78,18 +78,22 @@ def get_file_age_in_days(file_path):
     return age_in_days
 
 class Product:
-    def __init__(self, product_name, config, tmp_dir):
+    def __init__(self, product_name, config, opendap_base_dir, opendap_netcdf_ondemand_dir, request_dir):
         """
         Initializes a Product instance.
 
         Args:
             product_name (str): Name of the product.
             config (dict): Configuration dictionary.
-            tmp_dir (str): Path to the temporary directory where products and logs are stored
+            opendap_base_dir (Path): Path to the opendap base directory
+            opendap_netcdf_ondemand_dir (Path): Path to where NetCDF-ondemand requested files are stored
+            request_dir (str): Path to the request-specific directory where products and logs are stored
         """
         self.product_name = product_name
         self.config = config
-        self.tmp_dir = Path(tmp_dir)
+        self.opendap_base_dir = Path(opendap_base_dir)
+        self.opendap_netcdf_ondemand_dir = Path(opendap_netcdf_ondemand_dir)
+        self.request_dir = Path(request_dir)
 
         # Set up temporary directories for storing logs
         self._define_product_path()
@@ -101,8 +105,8 @@ class Product:
         """
         Define filepath for NetCDF and SAFE product
         """
-        self.tmp_product_path = self.tmp_dir / f"{self.product_name}.nc"
-        self.safe_tmp = self.tmp_dir / f"{self.product_name}.zip"
+        self.tmp_product_path = self.request_dir / f"{self.product_name}.nc"
+        self.safe_tmp = self.request_dir / f"{self.product_name}.zip"
 
     def _define_operational_path(self):
         """
@@ -168,7 +172,8 @@ class Product:
         Returns:
             str: Complete OPeNDAP URL.
         """
-        opendap_route_path = 'https://nbstds.met.no/thredds/dodsC/' + str(self.tmp_dir) + '/'
+        relative_path = self.request_dir.relative_to(self.opendap_base_dir)
+        opendap_route_path = 'https://nbstds.met.no/thredds/dodsC/' + str(relative_path) + '/'
         return urljoin(opendap_route_path, f"{self.product_name}.nc.html")
 
     def find_product_from_previous_requests(self):
@@ -179,7 +184,7 @@ class Product:
             None if doesn't exist
             str: Filepath to product if it exists
         """
-        for root, dirs, files in os.walk(self.config['tmp_dir']):
+        for root, dirs, files in os.walk(self.opendap_netcdf_ondemand_dir):
             if f'{self.product_name}.nc' in files:
                 return os.path.abspath(os.path.join(root, f'{self.product_name}.nc'))
         return None
@@ -208,7 +213,7 @@ class Product:
         logger.debug('Starting to download SAFE')
         if not self.safe_tmp.is_file():
             try:
-                hub.download(uuid, directory_path=self.tmp_dir)
+                hub.download(uuid, directory_path=self.request_dir)
             except (sentinelsat.sentinel.SentinelAPIError, sentinelsat.sentinel.InvalidChecksumError) as e:
                 logger.error(f"Could not download product {self.product_name} from colhub.met.no. Hence terminating.")
                 logger.error(e)
@@ -225,7 +230,7 @@ class Product:
         Unzips the SAFE product.
         """
         if not self.safe_tmp.is_file():
-            self.safe_tmp = self.tmp_dir / f"{self.product_name}.SAFE.zip"
+            self.safe_tmp = self.request_dir / f"{self.product_name}.SAFE.zip"
             if not self.safe_tmp.is_file():
                 logger.error('Archive not found. Hence exiting')
                 return
@@ -233,7 +238,7 @@ class Product:
         logger.debug('Starting unzipping SAFE')
         try:
             with zipfile.ZipFile(self.safe_tmp, 'r') as zip_ref:
-                zip_ref.extractall(self.tmp_dir)
+                zip_ref.extractall(self.request_dir)
         except zipfile.BadZipFile as e:
             logger.error("Could not unzip SAFE archive. Hence terminating.")
             logger.error(e)
@@ -251,21 +256,21 @@ class Product:
         if self.product_name.startswith('S2'):
             conversion_object = Sentinel2_reader_and_NetCDF_converter(
                 product=self.product_name,
-                indir=self.tmp_dir,
-                outdir=self.tmp_dir
+                indir=self.request_dir,
+                outdir=self.request_dir
             )
         else:
             conversion_object = Sentinel1_reader_and_NetCDF_converter(
                 product=self.product_name,
-                indir=self.tmp_dir,
-                outdir=self.tmp_dir
+                indir=self.request_dir,
+                outdir=self.request_dir
             )
 
         if not conversion_object.read_ok:
             logger.error("Something went wrong in reading SAFE product. Hence exiting.")
             return
 
-        conversion_OK = conversion_object.write_to_NetCDF(self.tmp_dir, compression_level=1)
+        conversion_OK = conversion_object.write_to_NetCDF(self.request_dir, compression_level=1)
         logger.info(f"It took {(dt.datetime.now() - start).total_seconds()} seconds to create the NC file.")
 
         if conversion_OK:
@@ -277,10 +282,10 @@ class Product:
         """
         Removes the SAFE files associated with the product from the temporary directory.
         """
-        files_and_dirs = os.listdir(self.tmp_dir)
+        files_and_dirs = os.listdir(self.request_dir)
 
         for entry in files_and_dirs:
-            entry_path = os.path.join(self.tmp_dir, entry)
+            entry_path = os.path.join(self.request_dir, entry)
 
             if entry.startswith(self.product_name) and not entry.endswith('.nc'):
                 logger.info(f'Deleting {entry}')
@@ -294,15 +299,16 @@ class Product:
 
 def main(email, product_names):
     cfg = get_config()
-
     request_id = str(uuid.uuid4())
 
-    # Create the tmp_dir path by joining the base config path and the request_id
-    tmp_dir = Path(cfg['tmp_dir']) / request_id
+    # Create the request_dir path by joining the base bath for NetCDF on-demand products and the request_id
+    opendap_base_dir = Path(cfg['opendap_base_dir'])
+    opendap_netcdf_ondemand_dir = Path(opendap_base_dir / cfg['opendap_netcdf_ondemand_dir'])
+    request_dir = opendap_netcdf_ondemand_dir / request_id
 
     # Creating subdirectories to temporarily store logs
-    if not os.path.exists(tmp_dir):
-        os.makedirs(tmp_dir)
+    if not os.path.exists(request_dir):
+        os.makedirs(request_dir)
 
     # Set up logging to console and file
     logger = logging.getLogger()
@@ -312,7 +318,7 @@ def main(email, product_names):
     console_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(console_handler)
 
-    log_file_name = tmp_dir / f"logfile_{request_id}.log"
+    log_file_name = request_dir / f"logfile_{request_id}.log"
     file_handler = logging.FileHandler(log_file_name)
     file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(file_handler)
@@ -332,7 +338,7 @@ def main(email, product_names):
 
     for product_name in product_names:
         if product_name.startswith('S1') or product_name.startswith('S2'):
-            product = Product(product_name, cfg, tmp_dir)
+            product = Product(product_name, cfg, opendap_base_dir, opendap_netcdf_ondemand_dir, request_dir)
             if product.netcdf_file_exists():
                 opendap_links.append(str(product.opendap_product_path))
                 product.remove_safe()
