@@ -379,7 +379,7 @@ if __name__ == "__main__":
 
     try:
         args = parser.parse_args()
-        product_list = args.products.split(",")
+        product_list = [product.strip() for product in args.products.split(",")]
         main(args.email, product_list)
     except argparse.ArgumentError as e:
         logger.error(f"Argument parsing error: {e}")
