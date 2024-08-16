@@ -1,0 +1,5 @@
+There were problems processing the following products:
+
+{failures}
+
+NBS helpdesk have been copied into this email.

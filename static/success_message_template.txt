@@ -1,0 +1,5 @@
+The following products should now be available via OPeNDAP:
+
+{opendap_links}
+
+They will remain available for {tmp_keep_days} days after the time you requested them.

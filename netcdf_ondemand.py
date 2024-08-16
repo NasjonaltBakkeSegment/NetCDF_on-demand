@@ -150,7 +150,7 @@ class Product:
             return True
 
         else:
-            logger.info(f'Operational NetCDF file {self.product_name}.nc does not exist')
+            logger.info(f'Operational NetCDF file {self.product_name}.nc does not already exist. Will try to create it.')
             path_from_previous_request = self.find_product_from_previous_requests()
             if path_from_previous_request is not None:
                 logger.info(f'NetCDF file {self.product_name}.nc was requested recently and is still in storage')
@@ -337,30 +337,35 @@ def main(email, product_names):
     failures = []  # List of failures to include in email message
 
     for product_name in product_names:
-        if product_name.startswith('S1') or product_name.startswith('S2'):
-            product = Product(product_name, cfg, opendap_base_dir, opendap_netcdf_ondemand_dir, request_dir)
-            if product.netcdf_file_exists():
-                opendap_links.append(str(product.opendap_product_path))
-                product.remove_safe()
-            else:
-                product.download_safe_product()
-                product.unzip_safe_product()
-                product.safe_to_netcdf()
-                product.remove_safe()
-                logger.info(f"Downloaded and converted {product_name}")
+        try:
+            if product_name.startswith('S1') or product_name.startswith('S2'):
+                product = Product(product_name, cfg, opendap_base_dir, opendap_netcdf_ondemand_dir, request_dir)
                 if product.netcdf_file_exists():
                     opendap_links.append(str(product.opendap_product_path))
+                    product.remove_safe()
                 else:
-                    failures.append(product.product_name)
-        else:
-            logger.info(f"{product_name} does not begin with S1 or S2. Skipping")
-
+                    product.download_safe_product()
+                    product.unzip_safe_product()
+                    product.safe_to_netcdf()
+                    product.remove_safe()
+                    logger.info(f"Downloaded and converted {product_name}")
+                    if product.netcdf_file_exists():
+                        opendap_links.append(str(product.opendap_product_path))
+                    else:
+                        failures.append(product.product_name)
+            else:
+                logger.info(f"{product_name} does not begin with S1 or S2. Skipping")
+                failures.append(product_name)
+        except:
+            failures.append(product_name)
 
     logger.info("Sending an email to user")
     subject = 'Requested NetCDF files'
     message = write_message(cfg, opendap_links, failures)
-    email_sender(recipients, subject, message, attachment_path=log_file_name)
-
+    if len(failures) > 0:
+        email_sender(recipients, subject, message, attachment_path=log_file_name, cc=['nbs-helpdesk@met.no'])
+    else:
+        email_sender(recipients, subject, message, attachment_path=log_file_name)
     logger.info("End of job")
 
 if __name__ == "__main__":

@@ -1,16 +1,10 @@
-This is an automatic email.
+You are receiving this email because you have requested NetCDF files for satellite products. This is an automatic email.
 
-The following products should now be available via OPeNDAP:
+{success_message}
 
-{opendap_links}
+{failure_message}
 
-They will remain available for {tmp_keep_days} days after the time you requested them.
-
-All NetCDF products are also available via OPeNDAP for {operational_keep_days} after they first become available via https://www.satellittdata.no/.
-
-There were problems processing the following products:
-
-{failures}
+Note that all products are available as CF-NetCDF via OPeNDAP for {operational_keep_days} after they first become available. You can find these on https://www.satellittdata.no/.
 
 If you have any problems, please contact the NBS helpdesk at nbs-helpdesk@met.no and include the log file attached to this email.
 
