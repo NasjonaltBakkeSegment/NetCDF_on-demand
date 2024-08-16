@@ -20,7 +20,7 @@ def write_message(cfg, opendap_links, failures):
 
     # Creating a message for products processed successfully
     if len(opendap_links) > 0:
-        success_message_file_path = '../static/success_message_template.txt'
+        success_message_file_path = os.path.join(script_dir, "../static/success_message_template.txt")
         with open(success_message_file_path, 'r') as file:
             success_message = file.read()
         opendap_links_string = '\n'.join(opendap_links)
@@ -34,7 +34,7 @@ def write_message(cfg, opendap_links, failures):
     # Creating a message for products not processed successfully
     if len(failures) > 0:
         failures_string = '**All products were processed successfully**'
-        failure_message_file_path = '../static/failure_message_template.txt'
+        failure_message_file_path = os.path.join(script_dir, "../static/failure_message_template.txt")
         with open(failure_message_file_path, 'r') as file:
             failure_message = file.read()
         failures_string = '\n'.join(failures)
