@@ -152,6 +152,7 @@ class Product:
         else:
             logger.info(f'Operational NetCDF file {self.product_name}.nc does not already exist. Will try to create it.')
             path_from_previous_request = self.find_product_from_previous_requests()
+            logger.info(path_from_previous_request)
             if path_from_previous_request is not None:
                 logger.info(f'NetCDF file {self.product_name}.nc was requested recently and is still in storage')
                 shutil.copyfile(path_from_previous_request, self.tmp_product_path)
