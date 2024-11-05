@@ -14,6 +14,7 @@ import yaml
 import uuid
 import shutil
 import re
+import time
 from urllib.parse import urljoin
 from safe_to_netcdf.s1_reader_and_NetCDF_converter import Sentinel1_reader_and_NetCDF_converter
 from safe_to_netcdf.s2_reader_and_NetCDF_converter import Sentinel2_reader_and_NetCDF_converter
@@ -335,6 +336,7 @@ def main(email, product_names):
     # Create product_names list from fileList
     opendap_links = []  # List of opendap links to include in email message
     failures = []  # List of failures to include in email message
+    successes = [] # List of successes. If 1 or more, need to sleep before sending email
 
     for product_name in product_names:
         try:
@@ -342,6 +344,7 @@ def main(email, product_names):
                 product = Product(product_name, cfg, opendap_base_dir, opendap_netcdf_ondemand_dir, request_dir)
                 if product.netcdf_file_exists():
                     opendap_links.append(str(product.opendap_product_path))
+                    successes.append(product.product_name)
                     product.remove_safe()
                 else:
                     product.download_safe_product()
@@ -351,6 +354,7 @@ def main(email, product_names):
                     logger.info(f"Downloaded and converted {product_name}")
                     if product.netcdf_file_exists():
                         opendap_links.append(str(product.opendap_product_path))
+                        successes.append(product.product_name)
                     else:
                         failures.append(product.product_name)
             else:
@@ -358,6 +362,12 @@ def main(email, product_names):
                 failures.append(product_name)
         except:
             failures.append(product_name)
+
+    if len(successes) > 0:
+        logger.info('Sleep whilst files are rsynced across to lustre (runs every 1 min)')
+        time.sleep(60)
+    else:
+        logger.info('No NetCDF files have been made available')
 
     logger.info("Sending an email to user")
     subject = 'Requested NetCDF files'
