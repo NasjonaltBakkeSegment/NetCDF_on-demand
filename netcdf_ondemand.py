@@ -14,7 +14,6 @@ import yaml
 import uuid
 import shutil
 import re
-import json
 from urllib.parse import urljoin
 from safe_to_netcdf.s1_reader_and_NetCDF_converter import Sentinel1_reader_and_NetCDF_converter
 from safe_to_netcdf.s2_reader_and_NetCDF_converter import Sentinel2_reader_and_NetCDF_converter
