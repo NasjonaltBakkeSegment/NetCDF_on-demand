@@ -378,8 +378,6 @@ def main(email, product_names):
     if len(successes) > 0:
         logger.info('Sleep whilst files are rsynced across to lustre (runs every 1 min)')
         time.sleep(120)
-        for product_name in product_names:
-            product.remove_netcdf() # They should have been rsynced across to lustre after sleep time
     else:
         logger.info('No NetCDF files have been made available')
 
@@ -390,6 +388,9 @@ def main(email, product_names):
         email_sender(recipients, subject, message, attachment_path=log_file_name, cc=['nbs-helpdesk@met.no'])
     else:
         email_sender(recipients, subject, message, attachment_path=log_file_name)
+    if len(successes) > 0:
+        for product_name in product_names:
+            product.remove_netcdf() # They should have been rsynced across to lustre after sleep time
     logger.info("End of job")
 
 if __name__ == "__main__":
