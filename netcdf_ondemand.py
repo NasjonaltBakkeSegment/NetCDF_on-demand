@@ -297,6 +297,18 @@ class Product:
                     os.remove(entry_path)
                     logger.info(f'{entry} file was successfully deleted')
 
+    def remove_netcdf(self):
+        """
+        Removes the NetCDF file, log and dir associated with the product from the VM.
+        They will still exist on lustre
+        """
+        # Make sure the directory exists
+        if os.path.isdir(self.request_dir):
+            shutil.rmtree(self.request_dir)
+            logger.info(f"Request directory has been deleted from the VM.")
+        else:
+            logger.info(f"Request directory does not exist.")
+
 
 def main(email, product_names):
     cfg = get_config()
@@ -365,7 +377,9 @@ def main(email, product_names):
 
     if len(successes) > 0:
         logger.info('Sleep whilst files are rsynced across to lustre (runs every 1 min)')
-        time.sleep(60)
+        time.sleep(120)
+        for product_name in product_names:
+            product.remove_netcdf() # They should have been rsynced across to lustre after sleep time
     else:
         logger.info('No NetCDF files have been made available')
 
